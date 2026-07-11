@@ -5,12 +5,14 @@ public class PlayerMovement : MonoBehaviour
     private bool sprint;
 
     public Animator animator;
-
-    // --- new movement fields ---
     public CharacterController controller;
     public float walkSpeed = 2f;
     public float sprintSpeed = 5f;
-    public float gravity = -9.81f;
+    public float gravity = -20f;
+
+    // --- new jump fields ---
+    public float jumpHeight = 1.5f;
+
     private float verticalVelocity;
 
     void Update()
@@ -32,25 +34,35 @@ public class PlayerMovement : MonoBehaviour
         animator.SetFloat("sidewalkValue", Input.GetAxis("Horizontal"));
         animator.SetBool("sprint", sprint);
     }
-
+    
     void Move()
     {
-        // read input
+        Debug.Log("Grounded: " + controller.isGrounded);
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");
 
-        // build a movement direction relative to where the character faces
         Vector3 move = transform.right * h + transform.forward * v;
-
         float speed = sprint ? sprintSpeed : walkSpeed;
 
-        // gravity so the character stays on the ground
+        // reset downward velocity when grounded
         if (controller.isGrounded && verticalVelocity < 0)
             verticalVelocity = -2f;
+
+        // --- jump: debug version ---
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            Debug.Log("Space pressed. Grounded: " + controller.isGrounded);
+            if (controller.isGrounded)
+            {
+                verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+                animator.SetTrigger("jump");
+            }
+        }
+
+        // apply gravity
         verticalVelocity += gravity * Time.deltaTime;
 
         Vector3 finalMove = move * speed + Vector3.up * verticalVelocity;
-
         controller.Move(finalMove * Time.deltaTime);
     }
 }

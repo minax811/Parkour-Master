@@ -397,7 +397,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 2faa610713d3b3c439473daa55e8c60a, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.184
+      value: 0.029
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 2faa610713d3b3c439473daa55e8c60a, type: 3}
       propertyPath: m_LocalPosition.z
@@ -439,6 +439,10 @@ PrefabInstance:
       propertyPath: m_Controller
       value: 
       objectReference: {fileID: 9100000, guid: 9d88f1b26b30338469169a95d39bdd4a, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 2faa610713d3b3c439473daa55e8c60a, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -639,6 +643,7 @@ MonoBehaviour:
   walkSpeed: 2
   sprintSpeed: 5
   gravity: -9.81
+  jumpHeight: 1.5
 --- !u!143 &1685627105
 CharacterController:
   m_ObjectHideFlags: 0
