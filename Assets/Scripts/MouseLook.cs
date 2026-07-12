@@ -3,13 +3,15 @@ using UnityEngine;
 public class MouseLook : MonoBehaviour
 {
     public float mouseSensitivity = 200f;
-    public Transform playerBody;   // the character (HumanM_Model)
+    public Transform playerBody;
 
     private float xRotation = 0f;
 
+    public float vaultTilt = 0f;
+    public float vaultDip = 0f;
+
     void Start()
     {
-        // lock and hide the cursor
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
@@ -19,12 +21,11 @@ public class MouseLook : MonoBehaviour
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
-        // vertical look (tilt camera up/down)
         xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, -90f, 60f);
-        transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        xRotation = Mathf.Clamp(xRotation, -70f, 60f);
 
-        // horizontal look (rotate the whole character = turning)
+        transform.localRotation = Quaternion.Euler(xRotation + vaultDip, 0f, vaultTilt);
+
         playerBody.Rotate(Vector3.up * mouseX);
     }
 }
