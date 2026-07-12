@@ -10,6 +10,8 @@ public class MouseLook : MonoBehaviour
     public float vaultTilt = 0f;
     public float vaultDip = 0f;
     public float bobRoll = 0f;
+    public float shakePitch = 0f;
+    public float shakeRoll = 0f;
  
     void Start()
     {
@@ -25,7 +27,10 @@ public class MouseLook : MonoBehaviour
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -70f, 60f);
  
-        transform.localRotation = Quaternion.Euler(xRotation + vaultDip, 0f, vaultTilt + bobRoll);
+        transform.localRotation = Quaternion.Euler(
+            xRotation + vaultDip + shakePitch,
+            0f,
+            vaultTilt + bobRoll + shakeRoll);
  
         playerBody.Rotate(Vector3.up * mouseX);
     }

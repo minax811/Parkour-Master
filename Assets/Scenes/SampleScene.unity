@@ -630,6 +630,8 @@ MonoBehaviour:
   vaultTilt: 0
   vaultDip: 0
   bobRoll: 0
+  shakePitch: 0
+  shakeRoll: 0
 --- !u!1 &373934632
 GameObject:
   m_ObjectHideFlags: 0
@@ -6384,9 +6386,16 @@ MonoBehaviour:
   airControl: 0.3
   airSteerSpeed: 5
   jumpForwardBoost: 1.15
-  hardLandSpeed: 22
-  maxLandDip: 0.35
-  landRecoverySpeed: 7
+  minLandSpeed: 9
+  hardLandSpeed: 24
+  maxLandDip: 0.5
+  landRecoverySpeed: 4
+  landShakeAmount: 2.5
+  slideShakeAmount: 0.35
+  shakeDecay: 4
+  shakePosAmount: 0.12
+  shakeRotAmount: 4
+  shakeFrequency: 22
   bobFrequency: 1.9
   bobAmount: 0.055
   bobRollAmount: 1.2
