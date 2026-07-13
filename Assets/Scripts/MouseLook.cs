@@ -12,6 +12,7 @@ public class MouseLook : MonoBehaviour
     public float bobRoll = 0f;
     public float shakePitch = 0f;
     public float shakeRoll = 0f;
+    public float wallTilt = 0f;
  
     void Start()
     {
@@ -30,7 +31,7 @@ public class MouseLook : MonoBehaviour
         transform.localRotation = Quaternion.Euler(
             xRotation + vaultDip + shakePitch,
             0f,
-            vaultTilt + bobRoll + shakeRoll);
+            vaultTilt + bobRoll + shakeRoll + wallTilt);
  
         playerBody.Rotate(Vector3.up * mouseX);
     }
