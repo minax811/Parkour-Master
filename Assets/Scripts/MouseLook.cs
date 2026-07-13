@@ -1,38 +1,39 @@
 using UnityEngine;
- 
+
 public class MouseLook : MonoBehaviour
 {
     public float mouseSensitivity = 200f;
     public Transform playerBody;
- 
+
     private float xRotation = 0f;
- 
+
     public float vaultTilt = 0f;
     public float vaultDip = 0f;
     public float bobRoll = 0f;
     public float shakePitch = 0f;
     public float shakeRoll = 0f;
     public float wallTilt = 0f;
- 
+    public float rollPitch = 0f;
+
     void Start()
     {
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
     }
- 
+
     void Update()
     {
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
- 
+
         xRotation -= mouseY;
         xRotation = Mathf.Clamp(xRotation, -70f, 60f);
- 
+
         transform.localRotation = Quaternion.Euler(
-            xRotation + vaultDip + shakePitch,
+            xRotation + vaultDip + shakePitch + rollPitch,
             0f,
             vaultTilt + bobRoll + shakeRoll + wallTilt);
- 
+
         playerBody.Rotate(Vector3.up * mouseX);
     }
 }

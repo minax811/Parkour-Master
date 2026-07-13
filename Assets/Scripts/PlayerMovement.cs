@@ -28,6 +28,15 @@ public class PlayerMovement : MonoBehaviour
     public float maxLandDip = 0.5f;
     public float landRecoverySpeed = 6f;
  
+    [Header("Landing Roll")]
+    public float rollBufferTime = 0.3f;
+    public float rollMinFallSpeed = 12f;
+    public float rollDuration = 0.6f;
+    public float rollSpeed = 11f;
+    public float rollHeight = 1.2f;
+    public float rollCameraSpin = 360f;
+    public float rollFOV = 72f;
+ 
     [Header("Camera Shake")]
     public float landShakeAmount = 2.5f;
     public float slideShakeAmount = 0.4f;
@@ -76,6 +85,15 @@ public class PlayerMovement : MonoBehaviour
     public float maxVaultHeight = 1.8f;
     public float vaultClearance = 0.4f;
  
+    [Header("Mantle / Ledge Climb")]
+    public float mantleDetectDistance = 1.2f;
+    public float minMantleHeight = 1.0f;
+    public float maxMantleHeight = 3.2f;
+    public float mantleDuration = 0.65f;
+    public float mantleForwardOffset = 0.7f;
+    public float mantleDipAmount = 14f;
+    public bool autoMantleInAir = true;
+ 
     [Header("Vault Camera Feel")]
     public float vaultTiltAmount = 18f;
     public float vaultDipAmount = 12f;
@@ -99,6 +117,9 @@ public class PlayerMovement : MonoBehaviour
     private bool wasGrounded = true;
     private float jumpLockout = 0f;
  
+    private bool isRolling = false;
+    private float rollBuffer = 0f;
+    private bool isMantling = false;
     private bool isWallRunning = false;
     private bool wallLeft = false;
     private bool wallRight = false;
@@ -147,7 +168,7 @@ public class PlayerMovement : MonoBehaviour
  
     void Update()
     {
-        if (isVaulting || isSliding) return;
+        if (isVaulting || isSliding || isMantling || isRolling) return;
  
         Sprint();
         AnimationWalking();
@@ -194,12 +215,26 @@ public class PlayerMovement : MonoBehaviour
  
         if (jumpLockout > 0f) jumpLockout -= Time.deltaTime;
         if (wallCooldownTimer > 0f) wallCooldownTimer -= Time.deltaTime;
+        if (rollBuffer > 0f) rollBuffer -= Time.deltaTime;
+ 
+        if (Input.GetKeyDown(KeyCode.C))
+            rollBuffer = rollBufferTime;
  
         bool grounded = controller.isGrounded && jumpLockout <= 0f;
         float fallSpeed = verticalVelocity;
  
         if (grounded && !wasGrounded)
+        {
+            if (rollBuffer > 0f && -fallSpeed > rollMinFallSpeed)
+            {
+                wasGrounded = true;
+                rollBuffer = 0f;
+                StartCoroutine(Roll());
+                return;
+            }
+ 
             OnLand(fallSpeed);
+        }
  
         wasGrounded = grounded;
  
@@ -234,6 +269,15 @@ public class PlayerMovement : MonoBehaviour
             return;
         }
  
+        Vector3 ledgePoint;
+ 
+        if (autoMantleInAir && !grounded && v > 0.1f && verticalVelocity < 1f
+            && TryGetMantle(out ledgePoint))
+        {
+            StartCoroutine(Mantle(ledgePoint));
+            return;
+        }
+ 
         if (Input.GetKeyDown(KeyCode.Space))
         {
             Vector3 landingPoint;
@@ -244,7 +288,14 @@ public class PlayerMovement : MonoBehaviour
                 StartCoroutine(Vault(landingPoint, obstacleTop));
                 return;
             }
-            else if (grounded)
+ 
+            if (TryGetMantle(out ledgePoint))
+            {
+                StartCoroutine(Mantle(ledgePoint));
+                return;
+            }
+ 
+            if (grounded)
             {
                 verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
                 horizontalVelocity *= jumpForwardBoost;
@@ -298,6 +349,7 @@ public class PlayerMovement : MonoBehaviour
             float targetFOV = baseFOV;
  
             if (isWallRunning) targetFOV = wallRunFOV;
+            else if (isRolling) targetFOV = rollFOV;
             else if (isSliding) targetFOV = slideFOV;
             else if (sprint && horizontalVelocity.magnitude > 1f) targetFOV = sprintFOV;
  
@@ -327,7 +379,7 @@ public class PlayerMovement : MonoBehaviour
  
     void HandleBob()
     {
-        bool bobbing = controller.isGrounded && !isSliding && !isVaulting && !isWallRunning
+        bool bobbing = controller.isGrounded && !isSliding && !isVaulting && !isWallRunning && !isMantling && !isRolling
                        && horizontalVelocity.magnitude > 0.5f;
  
         if (bobbing)
@@ -343,6 +395,151 @@ public class PlayerMovement : MonoBehaviour
             bobY = Mathf.Lerp(bobY, 0f, Time.deltaTime * 8f);
             bobRoll = Mathf.Lerp(bobRoll, 0f, Time.deltaTime * 8f);
         }
+    }
+ 
+    IEnumerator Roll()
+    {
+        isRolling = true;
+        SetAnimatorIdle();
+ 
+        Vector3 rollDir = horizontalVelocity.sqrMagnitude > 1f
+            ? new Vector3(horizontalVelocity.x, 0f, horizontalVelocity.z).normalized
+            : transform.forward;
+ 
+        float entrySpeed = Mathf.Max(horizontalVelocity.magnitude, rollSpeed);
+ 
+        controller.height = rollHeight;
+        controller.center = new Vector3(defaultCenter.x, rollHeight / 2f, defaultCenter.z);
+ 
+        verticalVelocity = -2f;
+ 
+        float elapsed = 0f;
+        while (elapsed < rollDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / rollDuration);
+ 
+            float e = t * t * (3f - 2f * t);
+ 
+            if (mouseLook != null)
+                mouseLook.rollPitch = e * rollCameraSpin;
+ 
+            verticalVelocity += gravity * Time.deltaTime;
+            horizontalVelocity = rollDir * entrySpeed;
+ 
+            controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * Time.deltaTime);
+ 
+            yield return null;
+        }
+ 
+        float stuck = 0f;
+        while (IsBlocked(transform.position) && stuck < 2f)
+        {
+            stuck += Time.deltaTime;
+            verticalVelocity += gravity * Time.deltaTime;
+            controller.Move((rollDir * 3f + Vector3.up * verticalVelocity) * Time.deltaTime);
+            yield return null;
+        }
+ 
+        controller.height = defaultHeight;
+        controller.center = defaultCenter;
+ 
+        if (mouseLook != null)
+            mouseLook.rollPitch = 0f;
+ 
+        wasGrounded = controller.isGrounded;
+        isRolling = false;
+    }
+ 
+    bool TryGetMantle(out Vector3 ledgePoint)
+    {
+        ledgePoint = Vector3.zero;
+ 
+        Vector3 origin = transform.position + Vector3.up * 1.0f;
+        Debug.DrawRay(origin, transform.forward * mantleDetectDistance, Color.yellow);
+ 
+        RaycastHit hit;
+        if (!Physics.Raycast(origin, transform.forward, out hit, mantleDetectDistance))
+            return false;
+ 
+        Vector3 topProbe = hit.point + transform.forward * 0.25f + Vector3.up * (maxMantleHeight + 0.5f);
+        RaycastHit topHit;
+        if (!Physics.Raycast(topProbe, Vector3.down, out topHit, maxMantleHeight + 1.5f))
+            return false;
+ 
+        float ledgeHeight = topHit.point.y - transform.position.y;
+        if (ledgeHeight < minMantleHeight || ledgeHeight > maxMantleHeight)
+            return false;
+ 
+        if (Vector3.Dot(topHit.normal, Vector3.up) < 0.7f)
+            return false;
+ 
+        Vector3 standPoint = topHit.point + transform.forward * mantleForwardOffset;
+ 
+        if (IsBlocked(standPoint))
+            return false;
+ 
+        ledgePoint = standPoint;
+        return true;
+    }
+ 
+    IEnumerator Mantle(Vector3 target)
+    {
+        isMantling = true;
+        SetAnimatorIdle();
+ 
+        Vector3 start = transform.position;
+        Vector3 mid = new Vector3(start.x, target.y + 0.15f, start.z);
+ 
+        float risePhase = mantleDuration * 0.55f;
+        float pushPhase = mantleDuration - risePhase;
+ 
+        float elapsed = 0f;
+        while (elapsed < risePhase)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / risePhase);
+            float e = t * t * (3f - 2f * t);
+ 
+            controller.enabled = false;
+            transform.position = Vector3.Lerp(start, mid, e);
+            controller.enabled = true;
+ 
+            if (mouseLook != null)
+                mouseLook.vaultDip = Mathf.Sin(t * Mathf.PI * 0.5f) * mantleDipAmount;
+ 
+            yield return null;
+        }
+ 
+        elapsed = 0f;
+        while (elapsed < pushPhase)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / pushPhase);
+            float e = t * t * (3f - 2f * t);
+ 
+            controller.enabled = false;
+            transform.position = Vector3.Lerp(mid, target, e);
+            controller.enabled = true;
+ 
+            if (mouseLook != null)
+                mouseLook.vaultDip = Mathf.Cos(t * Mathf.PI * 0.5f) * mantleDipAmount;
+ 
+            yield return null;
+        }
+ 
+        controller.enabled = false;
+        transform.position = target + Vector3.up * 0.05f;
+        controller.enabled = true;
+ 
+        if (mouseLook != null)
+            mouseLook.vaultDip = 0f;
+ 
+        verticalVelocity = 0f;
+        horizontalVelocity = transform.forward * walkSpeed;
+        wasGrounded = true;
+        jumpLockout = 0f;
+        isMantling = false;
     }
  
     void CheckWalls()
@@ -365,7 +562,7 @@ public class PlayerMovement : MonoBehaviour
     bool CanStartWallRun(bool grounded, float forwardInput)
     {
         if (grounded) return false;
-        if (isVaulting || isSliding) return false;
+        if (isVaulting || isSliding || isMantling || isRolling) return false;
         if (wallCooldownTimer > 0f) return false;
         if (!wallLeft && !wallRight) return false;
         if (forwardInput <= 0.1f) return false;
