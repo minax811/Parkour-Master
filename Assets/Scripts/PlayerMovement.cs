@@ -110,6 +110,23 @@ public class PlayerMovement : MonoBehaviour
     public float slideDipAmount = 10f;
     public float slideCameraDropSpeed = 8f;
 
+    [Header("Pole Slide")]
+    public float poleDetectDistance = 4f;
+    public float poleSlideSpeed = 8f;      // descend speed
+    public float poleClimbSpeed = 5f;      // up/down with W/S
+    public float poleGrabOffset = 0.6f;    // distance player sits from pole center
+    public float poleJumpOffForce = 10f;   // launch when jumping off
+    public float poleJumpUpForce = 6f;
+    public float poleTiltAmount = 6f;      // subtle camera lean while sliding
+
+    [Header("Monkey Bars")]
+    public float barDetectDistance = 4f;   // how far forward we look for a bar
+    public float barHangDrop = 2f;         // how far below the bar the player hangs
+    public float barSwingForce = 12f;      // forward launch when jumping to next bar
+    public float barSwingUpForce = 7f;     // upward launch when jumping to next bar
+    public float barSideSpeed = 3f;        // optional A/D shuffle while hanging
+    public float barTiltAmount = 4f;       // subtle camera sway while hanging
+
     private float verticalVelocity;
     private Vector3 horizontalVelocity;
 
@@ -122,6 +139,8 @@ public class PlayerMovement : MonoBehaviour
     private float rollBuffer = 0f;
     private bool isMantling = false;
     private bool isWallRunning = false;
+    private bool isPoleSliding = false;
+    private bool isBarHanging = false;
     private bool wallLeft = false;
     private bool wallRight = false;
     private RaycastHit wallHit;
@@ -168,7 +187,7 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
-        if (isVaulting || isSliding || isMantling || isRolling) return;
+        if (isVaulting || isSliding || isMantling || isRolling || isPoleSliding || isBarHanging) return;
 
         Sprint();
         AnimationWalking();
@@ -261,6 +280,24 @@ public class PlayerMovement : MonoBehaviour
         {
             float steer = airControl * airSteerSpeed * Time.deltaTime;
             horizontalVelocity = Vector3.Lerp(horizontalVelocity, targetVelocity, steer);
+        }
+
+        // --- Grab (press E): try pole first, then overhead bar ---
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            Transform pole;
+            if (TryGetPole(out pole))
+            {
+                StartCoroutine(PoleSlide(pole));
+                return;
+            }
+
+            Transform bar;
+            if (TryGetBar(out bar))
+            {
+                StartCoroutine(BarHang(bar));
+                return;
+            }
         }
 
         if (Input.GetKeyDown(KeyCode.LeftControl) && sprint && grounded && inputDir.magnitude > 0.1f)
@@ -562,7 +599,7 @@ public class PlayerMovement : MonoBehaviour
     bool CanStartWallRun(bool grounded, float forwardInput)
     {
         if (grounded) return false;
-        if (isVaulting || isSliding || isMantling || isRolling) return false;
+        if (isVaulting || isSliding || isMantling || isRolling || isPoleSliding || isBarHanging) return false;
         if (wallCooldownTimer > 0f) return false;
         if (!wallLeft && !wallRight) return false;
         if (forwardInput <= 0.1f) return false;
@@ -814,6 +851,235 @@ public class PlayerMovement : MonoBehaviour
         return Physics.Raycast(origin, dir, controller.radius + 0.3f);
     }
 
+    // ---------------------------------------------------------------
+    // POLE SLIDE
+    // ---------------------------------------------------------------
+    bool TryGetPole(out Transform pole)
+    {
+        pole = null;
+        Vector3 origin = transform.position + Vector3.up * 1f;
+        Debug.DrawRay(origin, transform.forward * poleDetectDistance, Color.magenta);
+
+        RaycastHit hit;
+        if (!Physics.Raycast(origin, transform.forward, out hit, poleDetectDistance))
+            return false;
+
+        if (!hit.collider.CompareTag("Pole"))
+            return false;
+
+        pole = hit.collider.transform;
+        return true;
+    }
+
+    IEnumerator PoleSlide(Transform pole)
+    {
+        isPoleSliding = true;
+        SetAnimatorIdle();
+
+        Debug.Log("POLE: coroutine started. Pole=" + pole.name);
+
+        verticalVelocity = 0f;
+        horizontalVelocity = Vector3.zero;
+
+        // Work out a fixed spot beside the pole to hang at.
+        Vector3 poleXZ = new Vector3(pole.position.x, 0f, pole.position.z);
+        Vector3 playerXZ = new Vector3(transform.position.x, 0f, transform.position.z);
+        Vector3 awayFromPole = (playerXZ - poleXZ);
+        awayFromPole.y = 0f;
+
+        if (awayFromPole.sqrMagnitude < 0.01f)
+            awayFromPole = -transform.forward;
+        awayFromPole = awayFromPole.normalized;
+
+        Vector3 hangXZ = poleXZ + awayFromPole * poleGrabOffset;
+
+        controller.enabled = false;
+        transform.position = new Vector3(hangXZ.x, transform.position.y, hangXZ.z);
+        controller.enabled = true;
+
+        float groundY = transform.position.y - 100f;
+        RaycastHit floorHit;
+        if (Physics.Raycast(transform.position + Vector3.up * 0.5f, Vector3.down, out floorHit, 200f))
+            groundY = floorHit.point.y;
+
+        float currentY = transform.position.y;
+
+        Debug.Log("POLE: hanging at " + transform.position + " groundY=" + groundY);
+
+        // Wait one frame so the same E press that grabbed the pole
+        // isn't immediately read as a release.
+        yield return null;
+
+        while (isPoleSliding)
+        {
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                Debug.Log("POLE: E pressed - dropping");
+                EndPoleSlide(false);
+                yield break;
+            }
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                Debug.Log("POLE: Space pressed - jumping off");
+                EndPoleSlide(true);
+                yield break;
+            }
+
+            if (Input.GetKey(KeyCode.Q))
+            {
+                currentY -= poleSlideSpeed * Time.deltaTime;
+                Debug.Log("POLE: Q held, currentY=" + currentY);
+            }
+            else if (Input.GetKey(KeyCode.W))
+            {
+                currentY += poleClimbSpeed * Time.deltaTime;
+                Debug.Log("POLE: W held, currentY=" + currentY);
+            }
+
+            controller.enabled = false;
+            transform.position = new Vector3(hangXZ.x, currentY, hangXZ.z);
+            controller.enabled = true;
+
+            if (mouseLook != null)
+                mouseLook.vaultTilt = poleTiltAmount;
+
+            if (currentY <= groundY + 0.3f)
+            {
+                Debug.Log("POLE: reached bottom - releasing");
+                EndPoleSlide(false);
+                yield break;
+            }
+
+            yield return null;
+        }
+
+        Debug.Log("POLE: while loop exited (isPoleSliding went false)");
+    }
+
+    void EndPoleSlide(bool jumpOff)
+    {
+        if (mouseLook != null)
+            mouseLook.vaultTilt = 0f;
+
+        // Nudge the player away from the pole so they don't re-collide and get stuck.
+        controller.enabled = false;
+        transform.position += transform.forward * (poleGrabOffset + 0.3f);
+        controller.enabled = true;
+
+        if (jumpOff)
+        {
+            horizontalVelocity = transform.forward * poleJumpOffForce;
+            verticalVelocity = poleJumpUpForce;
+            jumpLockout = 0.2f;
+            animator.SetTrigger("jump");
+        }
+        else
+        {
+            verticalVelocity = -2f;
+            horizontalVelocity = Vector3.zero;
+        }
+
+        wasGrounded = controller.isGrounded;
+        isPoleSliding = false;
+    }
+
+    // ---------------------------------------------------------------
+    // MONKEY BARS (grab overhead bar, hang, swing to the next)
+    // ---------------------------------------------------------------
+    bool TryGetBar(out Transform bar)
+    {
+        bar = null;
+
+        // Look forward and slightly up, since bars are at/above head height.
+        Vector3 origin = transform.position + Vector3.up * 1.5f;
+        Vector3 dir = (transform.forward + Vector3.up * 0.35f).normalized;
+        Debug.DrawRay(origin, dir * barDetectDistance, Color.green);
+
+        RaycastHit hit;
+        if (!Physics.Raycast(origin, dir, out hit, barDetectDistance))
+            return false;
+
+        if (!hit.collider.CompareTag("Bar"))
+            return false;
+
+        bar = hit.collider.transform;
+        return true;
+    }
+
+    IEnumerator BarHang(Transform bar)
+    {
+        isBarHanging = true;
+        SetAnimatorIdle();
+
+        verticalVelocity = 0f;
+        horizontalVelocity = Vector3.zero;
+
+        // Hang directly under the bar's center, body dropped below it.
+        Vector3 hangPos = new Vector3(
+            bar.position.x,
+            bar.position.y - barHangDrop,
+            bar.position.z);
+
+        controller.enabled = false;
+        transform.position = hangPos;
+        controller.enabled = true;
+
+        // Wait one frame so the grab-E isn't read as a release this frame.
+        yield return null;
+
+        while (isBarHanging)
+        {
+            // Release: E drops straight down, Space swings forward to the next bar.
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                EndBarHang(false);
+                yield break;
+            }
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                EndBarHang(true);
+                yield break;
+            }
+
+            // Optional: shuffle side to side along the bar with A/D.
+            float side = Input.GetAxisRaw("Horizontal");
+            if (Mathf.Abs(side) > 0.1f)
+                hangPos += transform.right * side * barSideSpeed * Time.deltaTime;
+
+            controller.enabled = false;
+            transform.position = hangPos;
+            controller.enabled = true;
+
+            if (mouseLook != null)
+                mouseLook.vaultTilt = barTiltAmount;
+
+            yield return null;
+        }
+    }
+
+    void EndBarHang(bool swing)
+    {
+        if (mouseLook != null)
+            mouseLook.vaultTilt = 0f;
+
+        if (swing)
+        {
+            // Launch forward and up toward the next bar / platform.
+            horizontalVelocity = transform.forward * barSwingForce;
+            verticalVelocity = barSwingUpForce;
+            jumpLockout = 0.2f;
+            animator.SetTrigger("jump");
+        }
+        else
+        {
+            verticalVelocity = -2f;
+            horizontalVelocity = Vector3.zero;
+        }
+
+        wasGrounded = false;
+        isBarHanging = false;
+    }
+
     void OnControllerColliderHit(ControllerColliderHit hit)
     {
         if (levelManager != null && hit.collider.CompareTag("Killzone"))
@@ -829,6 +1095,8 @@ public class PlayerMovement : MonoBehaviour
         isMantling = false;
         isRolling = false;
         isWallRunning = false;
+        isPoleSliding = false;
+        isBarHanging = false;
 
         verticalVelocity = 0f;
         horizontalVelocity = Vector3.zero;
